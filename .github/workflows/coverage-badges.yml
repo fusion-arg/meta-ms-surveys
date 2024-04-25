@@ -1,0 +1,44 @@
+name: Run Tests and Generate Coverage
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: self-hosted
+
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Code checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests with coverage
+        id: tests
+        run: |
+          output=$(npm run test:cov 2>&1)
+          echo "$output" | tee coverage-${{ github.sha }}.txt
+          if echo "$output" | grep -q "No tests found, exiting with code 0"; then
+            echo "tests_found=false" >> $GITHUB_ENV
+          else
+            echo "tests_found=true" >> $GITHUB_ENV
+          fi
+
+      - name: Upload coverage to GitHub Actions artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-${{ github.sha }}.txt
+
+      - name: Generating coverage badges
+        if: env.tests_found == 'true'
+        uses: jpb06/jest-badges-action@latest
+        with:
+          branches: main

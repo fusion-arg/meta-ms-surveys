@@ -1,0 +1,66 @@
+name: Run Tests and Generate Merge Check
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  merge-check:
+    runs-on: self-hosted
+    env:
+      MIN_COVERAGE: ${{ vars.MIN_COVERAGE || 80 }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install jq -y
+        
+      - name: Run tests
+        run: |
+          # Run tests before merging
+          npm run test:cov
+
+          # Check if tests passed
+          if [ $? -ne 0 ]; then
+            echo "Tests did not pass. Blocking the merge."
+            exit 1
+          fi
+
+          echo "Tests passed. Merge is allowed."
+
+      - name: Check coverage
+        run: |
+          COVERAGE_FILE_PATH="coverage/coverage-summary.json"
+          if [ ! -f "$COVERAGE_FILE_PATH" ]; then
+            echo "Coverage file not found."
+            exit 1
+          fi
+
+          TOTAL_COVERAGE=$(jq -r ".total.lines.pct" "$COVERAGE_FILE_PATH")
+
+          # Convert COVERAGE to an integer using awk
+          COVERAGE_INTEGER=$(echo "$TOTAL_COVERAGE" | awk '{print int($1)}')
+
+          # Print coverage for reference
+          echo "Coverage: $TOTAL_COVERAGE%"
+
+          # Check if coverage is below the threshold
+          if [ "$COVERAGE_INTEGER" -lt $MIN_COVERAGE ]; then
+            # Add an error annotation
+            echo "::error::Coverage is below ${MIN_COVERAGE}%. Merge not allowed."
+            exit 1
+          fi
+
+          echo "Coverage is sufficient. Merge is allowed."
